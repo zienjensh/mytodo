@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>قائمة المهام</title>
+    <meta name="description" content="تطبيق قائمة مهام حديث وسهل الاستخدام">
+    <meta name="theme-color" content="#4f46e5">
+    
+    <!-- Preload critical resources -->
+    <link rel="preload" href="./styles/base.css" as="style">
+    <link rel="preload" href="./styles/components.css" as="style">
+    <link rel="preload" href="./styles/themes.css" as="style">
+    
+    <!-- Stylesheets -->
+    <link rel="stylesheet" href="./styles/base.css">
+    <link rel="stylesheet" href="./styles/components.css">
+    <link rel="stylesheet" href="./styles/themes.css">
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="./manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+</head>
+<body>
+    <!-- App Container -->
+    <div class="app" id="app">
+        <!-- Header -->
+        <header class="header">
+            <div class="header__container">
+                <h1 class="header__title">قائمة المهام</h1>
+                <button class="header__theme-toggle" id="themeToggle" aria-label="تبديل الوضع المظلم">
+                    <svg class="icon icon--theme-light" viewBox="0 0 24 24" fill="none">
+                        <circle cx="12" cy="12" r="5"/>
+                        <line x1="12" y1="1" x2="12" y2="3"/>
+                        <line x1="12" y1="21" x2="12" y2="23"/>
+                        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+                        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+                        <line x1="1" y1="12" x2="3" y2="12"/>
+                        <line x1="21" y1="12" x2="23" y2="12"/>
+                        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+                        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+                    </svg>
+                    <svg class="icon icon--theme-dark" viewBox="0 0 24 24" fill="none">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                    </svg>
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main">
+            <!-- Tasks View -->
+            <section class="tasks-view" id="tasksView">
+                <!-- Stats -->
+                <div class="stats">
+                    <div class="stats__item">
+                        <span class="stats__value" id="totalTasks">0</span>
+                        <span class="stats__label">المهام</span>
+                    </div>
+                    <div class="stats__item">
+                        <span class="stats__value" id="completedTasks">0</span>
+                        <span class="stats__label">مكتملة</span>
+                    </div>
+                </div>
+
+                <!-- Search and Filters -->
+                <div class="search-filters">
+                    <div class="search">
+                        <svg class="icon search__icon" viewBox="0 0 24 24" fill="none">
+                            <circle cx="11" cy="11" r="8"/>
+                            <path d="M21 21l-4.35-4.35"/>
+                        </svg>
+                        <input 
+                            type="text" 
+                            class="search__input" 
+                            id="searchInput"
+                            placeholder="البحث في المهام..."
+                            aria-label="البحث في المهام"
+                        >
+                        <button class="search__clear" id="searchClear" aria-label="مسح البحث">
+                            <svg class="icon" viewBox="0 0 24 24" fill="none">
+                                <line x1="18" y1="6" x2="6" y2="18"/>
+                                <line x1="6" y1="6" x2="18" y2="18"/>
+                            </svg>
+                        </button>
+                    </div>
+                    
+                    <div class="filters">
+                        <select class="filters__select" id="tagFilter" aria-label="فلتر حسب التصنيف">
+                            <option value="">جميع التصنيفات</option>
+                        </select>
+                        
+                        <select class="filters__select" id="dateFilter" aria-label="فلتر حسب التاريخ">
+                            <option value="">جميع التواريخ</option>
+                            <option value="today">اليوم</option>
+                            <option value="week">هذا الأسبوع</option>
+                            <option value="overdue">متأخرة</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Tasks List -->
+                <div class="tasks">
+                    <div class="tasks__list" id="tasksList" role="list">
+                        <!-- Tasks will be dynamically inserted here -->
+                    </div>
+                    
+                    <!-- Empty State -->
+                    <div class="empty-state" id="emptyState">
+                        <div class="empty-state__icon">
+                            <svg class="icon icon--large" viewBox="0 0 24 24" fill="none">
+                                <path d="M9 11l3 3l8-8"/>
+                                <path d="M21 12c0 4.97-4.03 9-9 9s-9-4.03-9-9s4.03-9 9-9c1.69 0 3.26.49 4.6 1.32"/>
+                            </svg>
+                        </div>
+                        <h3 class="empty-state__title">لا توجد مهام</h3>
+                        <p class="empty-state__text">ابدأ بإضافة مهمة جديدة أدناه</p>
+                    </div>
+                </div>
+
+                <!-- Add Task Form -->
+                <div class="add-task">
+                    <form class="add-task__form" id="addTaskForm">
+                        <div class="add-task__row">
+                            <input 
+                                type="text" 
+                                class="add-task__input" 
+                                id="taskTitle"
+                                placeholder="أضف مهمة جديدة..."
+                                aria-label="عنوان المهمة الجديدة"
+                                required
+                            >
+                            <button type="submit" class="add-task__submit" aria-label="إضافة المهمة">
+                                <svg class="icon" viewBox="0 0 24 24" fill="none">
+                                    <line x1="12" y1="5" x2="12" y2="19"/>
+                                    <line x1="5" y1="12" x2="19" y2="12"/>
+                                </svg>
+                            </button>
+                        </div>
+                        
+                        <div class="add-task__row add-task__row--secondary" id="taskOptions">
+                            <select class="add-task__select" id="taskTag" aria-label="تصنيف المهمة">
+                                <option value="">بدون تصنيف</option>
+                            </select>
+                            
+                            <input 
+                                type="date" 
+                                class="add-task__date" 
+                                id="taskDue"
+                                aria-label="تاريخ الاستحقاق"
+                            >
+                            
+                            <button type="button" class="add-task__options-toggle" id="optionsToggle" aria-label="خيارات إضافية">
+                                <svg class="icon" viewBox="0 0 24 24" fill="none">
+                                    <circle cx="12" cy="12" r="1"/>
+                                    <circle cx="19" cy="12" r="1"/>
+                                    <circle cx="5" cy="12" r="1"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </section>
+
+            <!-- Settings View -->
+            <section class="settings-view" id="settingsView" style="display: none;">
+                <div class="settings">
+                    <div class="settings__group">
+                        <h3 class="settings__title">المظهر</h3>
+                        <div class="settings__item">
+                            <label class="settings__label">الوضع المظلم</label>
+                            <div class="toggle">
+                                <input type="checkbox" class="toggle__input" id="settingsTheme">
+                                <label class="toggle__label" for="settingsTheme" aria-label="تبديل الوضع المظلم"></label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="settings__group">
+                        <h3 class="settings__title">التصنيفات</h3>
+                        <div class="tags-manager" id="tagsManager">
+                            <div class="tags-list" id="tagsList">
+                                <!-- Tags will be dynamically inserted here -->
+                            </div>
+                            <form class="add-tag" id="addTagForm">
+                                <input 
+                                    type="text" 
+                                    class="add-tag__input" 
+                                    id="newTagInput"
+                                    placeholder="إضافة تصنيف جديد..."
+                                    required
+                                >
+                                <button type="submit" class="add-tag__submit" aria-label="إضافة تصنيف">
+                                    <svg class="icon" viewBox="0 0 24 24" fill="none">
+                                        <line x1="12" y1="5" x2="12" y2="19"/>
+                                        <line x1="5" y1="12" x2="19" y2="12"/>
+                                    </svg>
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+
+                    <div class="settings__group">
+                        <h3 class="settings__title">البيانات</h3>
+                        <div class="settings__actions">
+                            <button class="btn btn--secondary" id="exportData">
+                                تصدير البيانات
+                                <svg class="icon" viewBox="0 0 24 24" fill="none">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                    <polyline points="7,10 12,15 17,10"/>
+                                    <line x1="12" y1="15" x2="12" y2="3"/>
+                                </svg>
+                            </button>
+                            <button class="btn btn--danger" id="clearData">
+                                مسح جميع البيانات
+                                <svg class="icon" viewBox="0 0 24 24" fill="none">
+                                    <polyline points="3,6 5,6 21,6"/>
+                                    <path d="M19,6v14a2,2,0,0,1-2,2H7a2,2,0,0,1-2-2V6m3,0V4a2,2,0,0,1,2-2h4a2,2,0,0,1,2,2v2"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Bottom Navigation -->
+        <nav class="bottom-nav">
+            <button class="bottom-nav__item bottom-nav__item--active" data-view="all" aria-label="جميع المهام">
+                <svg class="icon bottom-nav__icon" viewBox="0 0 24 24" fill="none">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                    <line x1="9" y1="9" x2="15" y2="9"/>
+                    <line x1="9" y1="15" x2="15" y2="15"/>
+                </svg>
+                <span class="bottom-nav__label">الكل</span>
+            </button>
+            
+            <button class="bottom-nav__item" data-view="today" aria-label="مهام اليوم">
+                <svg class="icon bottom-nav__icon" viewBox="0 0 24 24" fill="none">
+                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                    <line x1="16" y1="2" x2="16" y2="6"/>
+                    <line x1="8" y1="2" x2="8" y2="6"/>
+                    <line x1="3" y1="10" x2="21" y2="10"/>
+                </svg>
+                <span class="bottom-nav__label">اليوم</span>
+            </button>
+            
+            <button class="bottom-nav__item" data-view="completed" aria-label="المهام المكتملة">
+                <svg class="icon bottom-nav__icon" viewBox="0 0 24 24" fill="none">
+                    <path d="M9 12l2 2 4-4"/>
+                    <circle cx="12" cy="12" r="10"/>
+                </svg>
+                <span class="bottom-nav__label">مكتملة</span>
+            </button>
+            
+            <button class="bottom-nav__item" data-view="settings" aria-label="الإعدادات">
+                <svg class="icon bottom-nav__icon" viewBox="0 0 24 24" fill="none">
+                    <circle cx="12" cy="12" r="3"/>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1 1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                </svg>
+                <span class="bottom-nav__label">إعدادات</span>
+            </button>
+        </nav>
+    </div>
+
+    <!-- Modals -->
+    <!-- Edit Task Modal -->
+    <div class="modal" id="editModal">
+        <div class="modal__backdrop" data-modal-close></div>
+        <div class="modal__content">
+            <div class="modal__header">
+                <h3 class="modal__title">تعديل المهمة</h3>
+                <button class="modal__close" data-modal-close aria-label="إغلاق النافذة">
+                    <svg class="icon" viewBox="0 0 24 24" fill="none">
+                        <line x1="18" y1="6" x2="6" y2="18"/>
+                        <line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="modal__body">
+                <form id="editTaskForm">
+                    <div class="form-group">
+                        <label class="form-label" for="editTitle">عنوان المهمة</label>
+                        <input type="text" class="form-input" id="editTitle" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="editTag">التصنيف</label>
+                        <select class="form-select" id="editTag">
+                            <option value="">بدون تصنيف</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="editDue">تاريخ الاستحقاق</label>
+                        <input type="date" class="form-input" id="editDue">
+                    </div>
+                </form>
+            </div>
+            <div class="modal__footer">
+                <button type="button" class="btn btn--secondary" data-modal-close>إلغاء</button>
+                <button type="submit" form="editTaskForm" class="btn btn--primary">حفظ التغييرات</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirm Modal -->
+    <div class="modal" id="confirmModal">
+        <div class="modal__backdrop" data-modal-close></div>
+        <div class="modal__content">
+            <div class="modal__header">
+                <h3 class="modal__title" id="confirmTitle">تأكيد الإجراء</h3>
+            </div>
+            <div class="modal__body">
+                <p id="confirmMessage">هل أنت متأكد من هذا الإجراء؟</p>
+            </div>
+            <div class="modal__footer">
+                <button type="button" class="btn btn--secondary" data-modal-close>إلغاء</button>
+                <button type="button" class="btn btn--danger" id="confirmAction">تأكيد</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div class="toasts" id="toasts" aria-live="polite"></div>
+
+    <!-- Scripts -->
+    <script src="./scripts/app.js"></script>
+</body>
+</html>
