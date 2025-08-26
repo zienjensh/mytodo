@@ -21,6 +21,13 @@
     <link rel="manifest" href="./manifest.json">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="قائمة المهام">
+    
+    <!-- iOS Icons -->
+    <link rel="apple-touch-icon" href="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTgwIiBoZWlnaHQ9IjE4MCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgZmlsbD0iIzRmNDZlNSIgcng9IjQiLz48cGF0aCBkPSJNOSAxMmwyIDIgNC00IiBzdHJva2U9IndoaXRlIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPjwvc3ZnPg==">
+    
+    <!-- Theme Color -->
+    <meta name="msapplication-TileColor" content="#4f46e5">
 </head>
 <body>
     <!-- App Container -->
@@ -84,6 +91,15 @@
                                 <line x1="6" y1="6" x2="18" y2="18"/>
                             </svg>
                         </button>
+                        <button class="btn btn--secondary" id="importData">
+                            استيراد البيانات
+                            <svg class="icon" viewBox="0 0 24 24" fill="none">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                <polyline points="17,8 12,3 7,8"/>
+                                <line x1="12" y1="3" x2="12" y2="15"/>
+                            </svg>
+                        </button>
+                        <input type="file" id="importFile" accept=".json" style="display: none;">
                     </div>
                     
                     <div class="filters">
@@ -116,6 +132,40 @@
                         </div>
                         <h3 class="empty-state__title">لا توجد مهام</h3>
                         <p class="empty-state__text">ابدأ بإضافة مهمة جديدة أدناه</p>
+
+                <div class="settings__group">
+                    <h3 class="settings__title">الوضع غير المتصل</h3>
+                    <div class="offline-settings">
+                        <div class="offline-settings__item">
+                            <div class="offline-settings__label">
+                                <div class="offline-settings__title">تفعيل الوضع غير المتصل</div>
+                                <div class="offline-settings__description">يسمح بالعمل بدون إنترنت مع المزامنة التلقائية</div>
+                            </div>
+                            <div class="toggle">
+                                <input type="checkbox" class="toggle__input" id="offlineMode">
+                                <label class="toggle__label" for="offlineMode" aria-label="تبديل الوضع غير المتصل"></label>
+                            </div>
+                        </div>
+                        
+                        <div class="sync-status" id="syncStatus">
+                            <svg class="icon sync-status__icon" viewBox="0 0 24 24" fill="none">
+                                <path d="M23 4v6h-6"/>
+                                <path d="M1 20v-6h6"/>
+                                <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/>
+                            </svg>
+                            <span id="syncStatusText">جاري التحقق من حالة المزامنة...</span>
+                        </div>
+                        
+                        <button class="btn btn--secondary" id="forceSyncBtn">
+                            مزامنة الآن
+                            <svg class="icon" viewBox="0 0 24 24" fill="none">
+                                <path d="M23 4v6h-6"/>
+                                <path d="M1 20v-6h6"/>
+                                <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
                     </div>
                 </div>
 
@@ -324,6 +374,8 @@
     <div class="toasts" id="toasts" aria-live="polite"></div>
 
     <!-- Scripts -->
+    <script src="./scripts/offline-manager.js"></script>
+    <script src="./scripts/sync-manager.js"></script>
     <script src="./scripts/app.js"></script>
 </body>
 </html>
