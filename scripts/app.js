@@ -13,6 +13,10 @@ class TodoApp {
         this.selectedTag = '';
         this.selectedDateFilter = '';
         
+        // Offline and sync managers
+        this.offlineManager = null;
+        this.syncManager = null;
+        
         // DOM elements
         this.elements = {};
         
@@ -34,7 +38,10 @@ class TodoApp {
             handleKeyboardShortcuts: this.handleKeyboardShortcuts.bind(this),
             handleTouchStart: this.handleTouchStart.bind(this),
             handleTouchMove: this.handleTouchMove.bind(this),
-            handleTouchEnd: this.handleTouchEnd.bind(this)
+            handleTouchEnd: this.handleTouchEnd.bind(this),
+            handleOfflineSettings: this.handleOfflineSettings.bind(this),
+            handleImportData: this.handleImportData.bind(this),
+            handleSyncComplete: this.handleSyncComplete.bind(this)
         };
         
         // Touch/swipe handling
@@ -55,6 +62,7 @@ class TodoApp {
      */
     init() {
         this.cacheElements();
+        this.initializeOfflineSupport();
         this.loadState();
         this.setupEventListeners();
         this.initializeSelects();
@@ -62,6 +70,39 @@ class TodoApp {
         this.updateStats();
         this.applyTheme();
         this.showWelcomeData();
+        this.updateSyncStatus();
+    }
+
+    /**
+     * Initialize offline support
+     */
+    async initializeOfflineSupport() {
+        try {
+            // Initialize offline manager
+            this.offlineManager = new OfflineManager();
+            
+            // Initialize sync manager
+            this.syncManager = new SyncManager();
+            
+            // Set up offline manager callbacks
+            this.offlineManager.onStatusChange((status) => {
+                this.handleOfflineStatusChange(status);
+            });
+            
+            this.offlineManager.onModeChange((status) => {
+                this.handleOfflineModeChange(status);
+            });
+            
+            // Listen for sync completion events
+            window.addEventListener('syncComplete', this.boundHandlers.handleSyncComplete);
+            
+            // Sync localStorage to IndexedDB on first load
+            await this.syncManager.syncLocalStorageToIndexedDB();
+            
+            console.log('Offline support initialized successfully');
+        } catch (error) {
+            console.error('Failed to initialize offline support:', error);
+        }
     }
 
     /**
@@ -118,7 +159,15 @@ class TodoApp {
             // Data actions
             exportData: document.getElementById('exportData'),
             clearData: document.getElementById('clearData'),
+            importData: document.getElementById('importData'),
+            importFile: document.getElementById('importFile'),
             newTagInput: document.getElementById('newTagInput'),
+            
+            // Offline settings
+            offlineMode: document.getElementById('offlineMode'),
+            syncStatus: document.getElementById('syncStatus'),
+            syncStatusText: document.getElementById('syncStatusText'),
+            forceSyncBtn: document.getElementById('forceSyncBtn'),
             
             // Toast container
             toasts: document.getElementById('toasts')
@@ -170,6 +219,12 @@ class TodoApp {
         // Data actions
         this.elements.exportData?.addEventListener('click', this.boundHandlers.handleDataActions);
         this.elements.clearData?.addEventListener('click', this.boundHandlers.handleDataActions);
+        this.elements.importData?.addEventListener('click', this.boundHandlers.handleDataActions);
+        this.elements.importFile?.addEventListener('change', this.boundHandlers.handleImportData);
+        
+        // Offline settings
+        this.elements.offlineMode?.addEventListener('change', this.boundHandlers.handleOfflineSettings);
+        this.elements.forceSyncBtn?.addEventListener('click', this.boundHandlers.handleOfflineSettings);
         
         // Options toggle
         this.elements.optionsToggle?.addEventListener('click', this.boundHandlers.handleOptionsToggle);
@@ -238,6 +293,7 @@ class TodoApp {
         
         this.tasks.unshift(task);
         this.saveState();
+        this.queueForSync('create', task);
         this.renderTasks();
         this.updateStats();
         
@@ -269,7 +325,10 @@ class TodoApp {
         task.tag = this.elements.editTag?.value || '';
         task.due = this.elements.editDue?.value || '';
         
+        task.updatedAt = Date.now();
+        
         this.saveState();
+        this.queueForSync('update', task);
         this.renderTasks();
         this.updateStats();
         this.closeModal();
@@ -418,6 +477,7 @@ class TodoApp {
         
         task.done = !task.done;
         this.saveState();
+        this.queueForSync('update', task);
         this.renderTasks();
         this.updateStats();
         
@@ -470,8 +530,12 @@ class TodoApp {
      * Delete a task
      */
     deleteTask(taskId) {
+        const task = this.tasks.find(t => t.id === taskId);
         this.tasks = this.tasks.filter(t => t.id !== taskId);
         this.saveState();
+        if (task) {
+            this.queueForSync('delete', task);
+        }
         this.renderTasks();
         this.updateStats();
         this.closeModal();
@@ -757,6 +821,7 @@ class TodoApp {
         
         this.tags.push(tagName);
         this.saveState();
+        this.queueForSync('create', { name: tagName, type: 'tag' }, 'tag');
         this.initializeSelects();
         
         // Reset form
@@ -782,6 +847,7 @@ class TodoApp {
         });
         
         this.saveState();
+        this.queueForSync('delete', { name: tagName, type: 'tag' }, 'tag');
         this.initializeSelects();
         this.renderTasks();
         
@@ -825,6 +891,9 @@ class TodoApp {
             case 'exportData':
                 this.exportData();
                 break;
+            case 'importData':
+                this.elements.importFile?.click();
+                break;
             case 'clearData':
                 this.confirmClearData();
                 break;
@@ -834,24 +903,98 @@ class TodoApp {
     /**
      * Export data as JSON
      */
-    exportData() {
-        const data = {
-            tasks: this.tasks,
-            tags: this.tags,
-            theme: this.currentTheme,
-            exportDate: new Date().toISOString()
+    async exportData() {
+        try {
+            let data;
+            
+            if (this.syncManager) {
+                // Export from IndexedDB if available
+                data = await this.syncManager.createBackup();
+            } else {
+                // Fallback to localStorage
+                data = {
+                    version: '1.0.0',
+                    timestamp: Date.now(),
+                    data: {
+                        tasks: this.tasks,
+                        tags: this.tags.map(tag => ({ name: tag, createdAt: Date.now() })),
+                        metadata: [{ key: 'theme', value: this.currentTheme }]
+                    }
+                };
+            }
+            
+            const dataStr = JSON.stringify(data, null, 2);
+            const dataBlob = new Blob([dataStr], { type: 'application/json' });
+            
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(dataBlob);
+            link.download = `todo-backup-${new Date().toISOString().split('T')[0]}.json`;
+            link.click();
+            
+            URL.revokeObjectURL(link.href);
+            this.showToast('تم تصدير البيانات بنجاح', 'success');
+        } catch (error) {
+            console.error('Export failed:', error);
+            this.showToast('فشل في تصدير البيانات', 'error');
+        }
+    }
+
+    /**
+     * Handle import data
+     */
+    handleImportData(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+            try {
+                const backup = JSON.parse(event.target.result);
+                await this.importData(backup);
+                this.showToast('تم استيراد البيانات بنجاح', 'success');
+            } catch (error) {
+                console.error('Import failed:', error);
+                this.showToast('فشل في استيراد البيانات', 'error');
+            }
         };
+        reader.readAsText(file);
         
-        const dataStr = JSON.stringify(data, null, 2);
-        const dataBlob = new Blob([dataStr], { type: 'application/json' });
-        
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(dataBlob);
-        link.download = `todo-backup-${new Date().toISOString().split('T')[0]}.json`;
-        link.click();
-        
-        URL.revokeObjectURL(link.href);
-        this.showToast('تم تصدير البيانات بنجاح', 'success');
+        // Reset file input
+        e.target.value = '';
+    }
+
+    /**
+     * Import data from backup
+     */
+    async importData(backup) {
+        try {
+            if (this.syncManager) {
+                // Import to IndexedDB
+                await this.syncManager.restoreFromBackup(backup);
+            } else {
+                // Fallback to localStorage
+                if (backup.data) {
+                    this.tasks = backup.data.tasks || [];
+                    this.tags = backup.data.tags ? backup.data.tags.map(tag => tag.name || tag) : [];
+                    
+                    const themeData = backup.data.metadata?.find(m => m.key === 'theme');
+                    if (themeData) {
+                        this.currentTheme = themeData.value;
+                    }
+                }
+            }
+            
+            // Refresh UI
+            this.loadState();
+            this.initializeSelects();
+            this.renderTasks();
+            this.updateStats();
+            this.applyTheme();
+            
+        } catch (error) {
+            console.error('Import failed:', error);
+            throw error;
+        }
     }
 
     /**
@@ -878,6 +1021,12 @@ class TodoApp {
     clearAllData() {
         this.tasks = [];
         this.tags = ['عمل', 'شخصي', 'دراسة', 'صحة', 'تسوق'];
+        
+        // Clear IndexedDB if available
+        if (this.syncManager) {
+            this.syncManager.clearAllData().catch(console.error);
+        }
+        
         this.saveState();
         this.initializeSelects();
         this.renderTasks();
@@ -902,6 +1051,141 @@ class TodoApp {
     hideTaskOptions() {
         if (this.elements.taskOptions) {
             this.elements.taskOptions.classList.remove('show');
+        }
+    }
+
+    /**
+     * Handle offline settings
+     */
+    async handleOfflineSettings(e) {
+        const action = e.target.id;
+        
+        switch (action) {
+            case 'offlineMode':
+                if (this.offlineManager) {
+                    this.offlineManager.toggleOfflineMode();
+                }
+                break;
+            case 'forceSyncBtn':
+                await this.forceSync();
+                break;
+        }
+    }
+
+    /**
+     * Force sync now
+     */
+    async forceSync() {
+        if (!this.syncManager) {
+            this.showToast('مدير المزامنة غير متاح', 'error');
+            return;
+        }
+
+        try {
+            this.updateSyncStatus('syncing', 'جاري المزامنة...');
+            await this.syncManager.forceSyncNow();
+            this.updateSyncStatus('synced', 'تمت المزامنة بنجاح');
+            this.showToast('تمت المزامنة بنجاح', 'success');
+        } catch (error) {
+            console.error('Force sync failed:', error);
+            this.updateSyncStatus('error', 'فشل في المزامنة');
+            this.showToast('فشل في المزامنة', 'error');
+        }
+    }
+
+    /**
+     * Queue item for sync
+     */
+    queueForSync(operation, data, entityType = 'task') {
+        if (this.syncManager) {
+            this.syncManager.addToSyncQueue(operation, data, entityType);
+        }
+    }
+
+    /**
+     * Handle offline status change
+     */
+    handleOfflineStatusChange(status) {
+        console.log('Offline status changed:', status);
+        this.updateSyncStatus();
+    }
+
+    /**
+     * Handle offline mode change
+     */
+    handleOfflineModeChange(status) {
+        console.log('Offline mode changed:', status);
+        
+        // Update offline mode toggle
+        if (this.elements.offlineMode) {
+            this.elements.offlineMode.checked = status.offlineMode;
+        }
+        
+        this.updateSyncStatus();
+    }
+
+    /**
+     * Handle sync completion
+     */
+    handleSyncComplete(event) {
+        const { success, error } = event.detail;
+        
+        if (success) {
+            this.updateSyncStatus('synced', 'تمت المزامنة بنجاح');
+            // Reload data from IndexedDB
+            this.loadState();
+            this.renderTasks();
+            this.updateStats();
+        } else {
+            this.updateSyncStatus('error', `فشل في المزامنة: ${error}`);
+        }
+    }
+
+    /**
+     * Update sync status display
+     */
+    async updateSyncStatus(status = null, message = null) {
+        if (!this.elements.syncStatus || !this.elements.syncStatusText) {
+            return;
+        }
+
+        try {
+            let syncStatus, statusMessage;
+            
+            if (status && message) {
+                syncStatus = status;
+                statusMessage = message;
+            } else if (this.syncManager) {
+                const syncInfo = await this.syncManager.getSyncStatus();
+                
+                if (!syncInfo.isOnline) {
+                    syncStatus = 'offline';
+                    statusMessage = 'غير متصل';
+                } else if (syncInfo.hasPendingSync) {
+                    syncStatus = 'pending';
+                    statusMessage = `${syncInfo.pendingCount} عنصر في انتظار المزامنة`;
+                } else {
+                    syncStatus = 'synced';
+                    statusMessage = syncInfo.lastSyncTime 
+                        ? `آخر مزامنة: ${new Date(syncInfo.lastSyncTime).toLocaleString('ar-SA')}`
+                        : 'لم تتم المزامنة بعد';
+                }
+            } else {
+                syncStatus = 'disabled';
+                statusMessage = 'المزامنة غير مفعلة';
+            }
+            
+            // Update status class
+            this.elements.syncStatus.className = `sync-status sync-status--${syncStatus}`;
+            this.elements.syncStatusText.textContent = statusMessage;
+            
+            // Update force sync button
+            if (this.elements.forceSyncBtn) {
+                this.elements.forceSyncBtn.disabled = !this.syncManager || syncStatus === 'offline' || syncStatus === 'syncing';
+            }
+            
+        } catch (error) {
+            console.error('Failed to update sync status:', error);
         }
     }
 
@@ -1075,6 +1359,46 @@ class TodoApp {
      */
     loadState() {
         try {
+            if (this.syncManager) {
+                // Load from IndexedDB if available
+                this.loadFromIndexedDB();
+            } else {
+                // Fallback to localStorage
+                const saved = localStorage.getItem('todoApp');
+                if (saved) {
+                    const data = JSON.parse(saved);
+                    this.tasks = data.tasks || [];
+                    this.tags = data.tags || ['عمل', 'شخصي', 'دراسة', 'صحة', 'تسوق'];
+                    this.currentTheme = data.theme || 'light';
+                }
+            }
+        } catch (error) {
+            console.warn('Failed to load saved state:', error);
+            this.showWelcomeData();
+        }
+    }
+
+    /**
+     * Load state from IndexedDB
+     */
+    async loadFromIndexedDB() {
+        try {
+            if (!this.syncManager) return;
+            
+            const tasks = await this.syncManager.loadFromIndexedDB('tasks');
+            const tags = await this.syncManager.loadFromIndexedDB('tags');
+            const themeData = await this.syncManager.loadFromIndexedDB('metadata', 'theme');
+            
+            this.tasks = tasks || [];
+            this.tags = tags ? tags.map(tag => tag.name) : ['عمل', 'شخصي', 'دراسة', 'صحة', 'تسوق'];
+            this.currentTheme = themeData ? themeData.value : 'light';
+            
+            // Also sync to localStorage for compatibility
+            this.saveState();
+            
+        } catch (error) {
+            console.warn('Failed to load from IndexedDB, falling back to localStorage:', error);
+            // Fallback to localStorage
             const saved = localStorage.getItem('todoApp');
             if (saved) {
                 const data = JSON.parse(saved);
@@ -1082,9 +1406,6 @@ class TodoApp {
                 this.tags = data.tags || ['عمل', 'شخصي', 'دراسة', 'صحة', 'تسوق'];
                 this.currentTheme = data.theme || 'light';
             }
-        } catch (error) {
-            console.warn('Failed to load saved state:', error);
-            this.showWelcomeData();
         }
     }
 
@@ -1099,9 +1420,47 @@ class TodoApp {
                 theme: this.currentTheme
             };
             localStorage.setItem('todoApp', JSON.stringify(data));
+            
+            // Also save to IndexedDB if available
+            if (this.syncManager) {
+                this.saveToIndexedDB();
+            }
         } catch (error) {
             console.warn('Failed to save state:', error);
             this.showToast('فشل في حفظ البيانات', 'error');
+        }
+    }
+
+    /**
+     * Save state to IndexedDB
+     */
+    async saveToIndexedDB() {
+        try {
+            if (!this.syncManager) return;
+            
+            // Save tasks
+            const tasksWithTimestamps = this.tasks.map(task => ({
+                ...task,
+                updatedAt: task.updatedAt || Date.now()
+            }));
+            await this.syncManager.saveToIndexedDB('tasks', tasksWithTimestamps);
+            
+            // Save tags
+            const tagsWithTimestamps = this.tags.map(tag => ({
+                name: tag,
+                createdAt: Date.now()
+            }));
+            await this.syncManager.saveToIndexedDB('tags', tagsWithTimestamps);
+            
+            // Save theme
+            await this.syncManager.saveToIndexedDB('metadata', {
+                key: 'theme',
+                value: this.currentTheme,
+                updatedAt: Date.now()
+            });
+            
+        } catch (error) {
+            console.warn('Failed to save to IndexedDB:', error);
         }
     }
 
@@ -1179,8 +1538,12 @@ class TodoApp {
 
 // Initialize the app when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
-    new TodoApp();
+    window.todoApp = new TodoApp();
 });
 
 // Export for potential testing/extension
-window.TodoApp = TodoApp;
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = TodoApp;
+} else {
+    window.TodoApp = TodoApp;
+}
